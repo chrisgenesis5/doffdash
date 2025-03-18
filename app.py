@@ -30,11 +30,7 @@ def login():
             max-width: 400px;
             margin: 0 auto;
             padding-top: 100px;
-        }
-        .stTextInput > div > div > input {
-            width: 100% !important;
-            max-width: 300px !important;
-            margin: 0 auto;
+            text-align: center;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -42,16 +38,19 @@ def login():
     with st.container():
         st.markdown('<div class="login-container">', unsafe_allow_html=True)
         st.title("Login")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
 
-        if st.button("Login"):
-            if username == "admin" and password == "password123":
-                st.session_state.logged_in = True
-                st.rerun()
-            else:
-                st.error("Invalid credentials. Please try again.")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            if st.button("Login"):
+                if username == "admin" and password == "password123":
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials. Please try again.")
         st.markdown("</div>", unsafe_allow_html=True)
+
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False

@@ -1,0 +1,147 @@
+import pandas as pd
+from pymongo import MongoClient
+import streamlit as st
+import plotly.express as px
+from bson import DBRef
+
+# Connect to MongoDB
+uri = "mongodb+srv://readOnlyUser:DoffairReadDev@development-cluster.9w53x.mongodb.net/doffair_dev?retryWrites=true&w=majority"
+client = MongoClient(uri)
+db = client["doffair_dev"]
+
+# Helper function to remove DBRef fields
+def remove_dbref(doc):
+    return {k: v if not isinstance(v, DBRef) else str(v) for k, v in doc.items()}
+
+# Fetch Data & Remove DBRef
+users_df = pd.DataFrame([remove_dbref(doc) for doc in db["users"].find({}, {"_id": 1})])
+pets_df = pd.DataFrame([remove_dbref(doc) for doc in db["pets"].find({}, {"_id": 1, "userId": 1, "breed": 1, "createdAt": 1})])
+user_info_df = pd.DataFrame([remove_dbref(doc) for doc in db["userInfo"].find({}, {"_id": 1, "userId": 1, "location": 1})])
+
+# Debug: Check raw user_info_df
+st.write("Debug: Raw user_info_df", user_info_df.head(10))
+
+# Extract longitude & latitude properly
+if "location" in user_info_df.columns and not user_info_df.empty:
+    def extract_coordinates(loc):
+        """ Extracts coordinates safely from MongoDB GeoJSON structure. """
+        if isinstance(loc, dict) and "coordinates" in loc:
+            try:
+                lon, lat = loc["coordinates"]  # Extract values
+                return pd.Series([lon, lat])  # Return as a Series
+            except Exception as e:
+                return pd.Series([None, None])  # Handle errors
+        return pd.Series([None, None])  # Default for missing/invalid data
+
+    # Apply extraction
+    user_info_df[["longitude", "latitude"]] = user_info_df["location"].apply(extract_coordinates)
+
+    # Drop missing values
+    map_df = user_info_df.dropna(subset=["longitude", "latitude"])[["longitude", "latitude"]]
+else:
+    map_df = pd.DataFrame(columns=["longitude", "latitude"])
+
+# Debug: Check processed map_df
+st.write("Debug: Processed map_df", map_df.head(10))
+
+# Data Processing
+total_users = len(users_df)
+
+# Pets Per User
+pets_per_user = pets_df["userId"].value_counts().reset_index() if "userId" in pets_df.columns and not pets_df.empty else pd.DataFrame(columns=["userId", "pet_count"])
+pets_per_user.columns = ["userId", "pet_count"]
+
+# Pet Breed Distribution
+breed_distribution = pets_df["breed"].value_counts().reset_index() if "breed" in pets_df.columns and not pets_df.empty else pd.DataFrame(columns=["breed", "count"])
+breed_distribution.columns = ["breed", "count"]
+
+# User Count by Location
+if "location" in user_info_df.columns and not user_info_df.empty:
+    # Extract location coordinates and count users per location
+    user_info_df["location_str"] = user_info_df["location"].apply(lambda loc: str(loc["coordinates"]) if isinstance(loc, dict) and "coordinates" in loc else None)
+    location_distribution = user_info_df["location_str"].value_counts().reset_index()
+    location_distribution.columns = ["location", "user_count"]
+else:
+    location_distribution = pd.DataFrame(columns=["location", "user_count"])
+
+# Active Users Over Time (Based on Pet Registrations)
+if "createdAt" in pets_df.columns and not pets_df.empty:
+    pets_df["createdAt"] = pd.to_datetime(pets_df["createdAt"])
+    active_users_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
+    active_users_over_time = active_users_over_time.rename(columns={"_id": "new_pets_registered"})
+else:
+    active_users_over_time = pd.DataFrame(columns=["createdAt", "new_pets_registered"])
+
+# Top 10 Users with Most Pets
+top_users_pets = pets_per_user.nlargest(10, "pet_count") if not pets_per_user.empty else pd.DataFrame(columns=["userId", "pet_count"])
+
+# Most Popular Breeds
+top_breeds = breed_distribution.nlargest(10, "count") if not breed_distribution.empty else pd.DataFrame(columns=["breed", "count"])
+
+# Locations with Highest Pet Registrations
+if "userId" in pets_df.columns and not pets_df.empty and "location" in user_info_df.columns:
+    pets_with_locations = pets_df.merge(user_info_df, left_on="userId", right_on="userId", how="left")
+    pet_location_distribution = pets_with_locations["location_str"].value_counts().reset_index()
+    pet_location_distribution.columns = ["location", "pet_count"]
+else:
+    pet_location_distribution = pd.DataFrame(columns=["location", "pet_count"])
+
+# Streamlit App Layout
+st.title("User & Pet Analytics Dashboard")
+st.header(f"Total Registered Users: {total_users}")
+
+# Pets Per User Bar Chart
+if not pets_per_user.empty:
+    st.subheader("Users with Number of Pets")
+    st.plotly_chart(px.bar(pets_per_user, x="userId", y="pet_count", title="Users with Number of Pets"))
+else:
+    st.warning("No pet data available.")
+
+# Pet Breed Pie Chart
+if not breed_distribution.empty:
+    st.subheader("Pet Distribution by Breed")
+    st.plotly_chart(px.pie(breed_distribution, names="breed", values="count", title="Pet Distribution by Breed"))
+else:
+    st.warning("No breed data available.")
+
+# User Count by Location
+if not location_distribution.empty:
+    st.subheader("User Count by Location")
+    st.plotly_chart(px.bar(location_distribution, x="location", y="user_count", title="User Count by Location"))
+else:
+    st.warning("No location data available.")
+
+# Active Users Over Time
+if not active_users_over_time.empty:
+    st.subheader("Active Users Over Time (New Pets Registered)")
+    st.plotly_chart(px.line(active_users_over_time, x="createdAt", y="new_pets_registered", title="New Pets Registered Over Time"))
+else:
+    st.warning("No registration date data available.")
+
+# Top 10 Users with Most Pets
+if not top_users_pets.empty:
+    st.subheader("Top 10 Users with Most Pets")
+    st.plotly_chart(px.bar(top_users_pets, x="userId", y="pet_count", title="Top 10 Users with Most Pets"))
+else:
+    st.warning("No user pet data available.")
+
+# Most Popular Breeds
+if not top_breeds.empty:
+    st.subheader("Top 10 Most Popular Pet Breeds")
+    st.plotly_chart(px.bar(top_breeds, x="breed", y="count", title="Top 10 Pet Breeds"))
+else:
+    st.warning("No breed data available.")
+
+# Locations with Highest Pet Registrations
+if not pet_location_distribution.empty:
+    st.subheader("Locations with Highest Pet Registrations")
+    st.plotly_chart(px.bar(pet_location_distribution, x="location", y="pet_count", title="Top Locations for Pet Registrations"))
+else:
+    st.warning("No location data available.")
+
+# **📍 Map Visualization for User Locations**
+if not map_df.empty:
+    st.subheader("User Locations on Map")
+    st.map(map_df)
+else:
+    st.warning("No valid location data available.")

@@ -6,37 +6,52 @@ import plotly.graph_objects as go
 from datetime import datetime
 from bson import DBRef
 
-# ------------------- Streamlit Page Config -------------------
+# ------------------- Streamlit Page Config + Full Width -------------------
 st.set_page_config(page_title="Doffair Analytics Dashboard", layout="wide")
-
-# CSS for dashboard (applied only after login)
-def apply_dashboard_css():
-    st.markdown("""
-        <style>
-        .block-container {
-            padding: 0rem 1rem 0rem 1rem !important;
-            max-width: 100% !important;
-        }
-        .main {
-            padding-left: 0rem !important;
-            padding-right: 0rem !important;
-        }
-        header, footer {visibility: hidden;}
-        </style>
-    """, unsafe_allow_html=True)
+st.markdown("""
+    <style>
+    .block-container {
+        padding: 0rem 1rem 0rem 1rem !important;
+        max-width: 100% !important;
+    }
+    .main {
+        padding-left: 0rem !important;
+        padding-right: 0rem !important;
+    }
+    header, footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
 
 # ------------------- Login Page -------------------
 def login():
-    st.title("Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    st.markdown("""
+        <style>
+        .login-container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding-top: 100px;
+        }
+        .stTextInput > div > div > input {
+            width: 100% !important;
+            max-width: 300px !important;
+            margin: 0 auto;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-    if st.button("Login"):
-        if username == "admin" and password == "password123":
-            st.session_state.logged_in = True
-            st.rerun()
-        else:
-            st.error("Invalid credentials. Please try again.")
+    with st.container():
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.title("Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Login"):
+            if username == "admin" and password == "password123":
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("Invalid credentials. Please try again.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -45,15 +60,12 @@ if not st.session_state.logged_in:
     login()
     st.stop()
 
-# Apply CSS after login
-apply_dashboard_css()
-
 # ------------------- MongoDB Connection -------------------
 uri = "mongodb+srv://readOnlyUser:DoffairReadDev@development-cluster.9w53x.mongodb.net/doffair_dev?retryWrites=true&w=majority"
 client = MongoClient(uri)
 db = client["doffair_dev"]
 
-# Helper to clean DBRef fields
+# Helper function to handle DBRef fields
 def remove_dbref(doc):
     return {k: v if not isinstance(v, DBRef) else str(v) for k, v in doc.items()}
 
@@ -86,10 +98,10 @@ total_pets = len(pets_df)
 breed_distribution = pets_df["breed"].value_counts().reset_index() if "breed" in pets_df.columns and not pets_df.empty else pd.DataFrame(columns=["breed", "count"])
 breed_distribution.columns = ["breed", "count"]
 
-# ------------------- Dashboard Layout -------------------
+# ------------------- Streamlit Layout -------------------
 st.title("🐾 Doffair Analytics Dashboard")
 
-# First row: user/pet count & breed distribution
+# -------------- First Row: Users & Pets + Breed Pie Chart ----------------
 col1, col2 = st.columns(2)
 
 with col1:
@@ -111,35 +123,37 @@ with col1:
 with col2:
     if not breed_distribution.empty:
         st.subheader("Pet Distribution by Breed")
-        fig_breed = px.pie(breed_distribution, names="breed", values="count", title="Pet Distribution by Breed")
+        fig_breed = px.pie(breed_distribution, names="breed", values="count", title="Pet Distribution by Breed", hole=0.3)
+        fig_breed.update_traces(textinfo='none')  # 👈 Removed repetitive percentages
         st.plotly_chart(fig_breed, use_container_width=True)
     else:
         st.warning("No breed data available.")
 
-# New pets registered over time
+# ------------------- New Pets Registered Over Time -------------------
 if "createdAt" in pets_df.columns and not pets_df.empty:
     pets_df["createdAt"] = pd.to_datetime(pets_df["createdAt"])
-    pets_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
-    pets_over_time = pets_over_time.rename(columns={"_id": "new_pets_registered"})
+    active_users_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
+    active_users_over_time = active_users_over_time.rename(columns={"_id": "new_pets_registered"})
 
     st.subheader("New Pets Registered Over Time")
-    fig_time = px.line(pets_over_time, x="createdAt", y="new_pets_registered", title="New Pets Registered Over Time")
+    fig_time = px.line(active_users_over_time, x="createdAt", y="new_pets_registered", title="New Pets Registered Over Time")
     st.plotly_chart(fig_time, use_container_width=True)
 else:
     st.warning("No registration date data available.")
 
-# Map visualization
+# ------------------- Map Visualization -------------------
 if not map_df.empty:
     st.subheader("User Locations on Map")
     st.map(map_df)
 else:
     st.warning("No valid location data available.")
 
-# Swipe insights with date filters
+# ------------------- Swipe Insights with Date Filters -------------------
 st.header("📅 Swipe Insights (Date-wise filter)")
-
-start_date = st.date_input("Start Date", value=datetime(2024, 1, 1))
-end_date = st.date_input("End Date", value=datetime.today())
+col_date_filter, _ = st.columns([1, 3])
+with col_date_filter:
+    start_date = st.date_input("Start Date", value=datetime(2024, 1, 1))
+    end_date = st.date_input("End Date", value=datetime.today())
 
 start_datetime = pd.to_datetime(start_date)
 end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1)
@@ -166,10 +180,11 @@ fig_swipes = go.Figure(data=[go.Bar(
 fig_swipes.update_layout(title=f"Swipes from {start_date} to {end_date}")
 st.plotly_chart(fig_swipes, use_container_width=True)
 
-# Users vs pets distribution (bug fixed)
+# ------------------- Users vs Number of Pets Chart -------------------
 if not pets_df.empty:
     user_pet_count = pets_df["userId"].value_counts()
-    pet_counts_distribution = user_pet_count.value_counts().reindex([0, 1, 2, 3], fill_value=0).rename_axis("Number of Pets").reset_index(name="User Count")
+    pet_counts_distribution = user_pet_count.value_counts().reindex(range(0, 4), fill_value=0).reset_index()
+    pet_counts_distribution.columns = ["Number of Pets", "User Count"]
 
     st.subheader("User Counts Based on Number of Pets (0,1,2,3)")
     fig_pet_distribution = px.bar(
@@ -182,4 +197,5 @@ if not pets_df.empty:
         color_continuous_scale="Blues"
     )
     fig_pet_distribution.update_traces(textposition='outside')
+    fig_pet_distribution.update_layout(xaxis=dict(tickmode='linear', tick0=0, dtick=1))  # 👈 Whole numbers only
     st.plotly_chart(fig_pet_distribution, use_container_width=True)

@@ -6,23 +6,24 @@ import plotly.graph_objects as go
 from datetime import datetime
 from bson import DBRef
 
-# ------------------- Streamlit Page Config + Full Width -------------------
+# ------------------- Streamlit Page Config -------------------
 st.set_page_config(page_title="Doffair Analytics Dashboard", layout="wide")
-st.markdown("""
-    <style>
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        padding-left: 1rem;
-        padding-right: 1rem;
-        max-width: 100% !important;
-    }
-    .css-18e3th9 {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-    </style>
-""", unsafe_allow_html=True)
+
+# CSS for dashboard (applied only after login)
+def apply_dashboard_css():
+    st.markdown("""
+        <style>
+        .block-container {
+            padding: 0rem 1rem 0rem 1rem !important;
+            max-width: 100% !important;
+        }
+        .main {
+            padding-left: 0rem !important;
+            padding-right: 0rem !important;
+        }
+        header, footer {visibility: hidden;}
+        </style>
+    """, unsafe_allow_html=True)
 
 # ------------------- Login Page -------------------
 def login():
@@ -44,12 +45,15 @@ if not st.session_state.logged_in:
     login()
     st.stop()
 
+# Apply CSS after login
+apply_dashboard_css()
+
 # ------------------- MongoDB Connection -------------------
 uri = "mongodb+srv://readOnlyUser:DoffairReadDev@development-cluster.9w53x.mongodb.net/doffair_dev?retryWrites=true&w=majority"
 client = MongoClient(uri)
 db = client["doffair_dev"]
 
-# Helper function to handle DBRef fields
+# Helper to clean DBRef fields
 def remove_dbref(doc):
     return {k: v if not isinstance(v, DBRef) else str(v) for k, v in doc.items()}
 
@@ -82,10 +86,10 @@ total_pets = len(pets_df)
 breed_distribution = pets_df["breed"].value_counts().reset_index() if "breed" in pets_df.columns and not pets_df.empty else pd.DataFrame(columns=["breed", "count"])
 breed_distribution.columns = ["breed", "count"]
 
-# ------------------- Streamlit Layout -------------------
+# ------------------- Dashboard Layout -------------------
 st.title("🐾 Doffair Analytics Dashboard")
 
-# -------------- First Row: Users & Pets + Breed Pie Chart ----------------
+# First row: user/pet count & breed distribution
 col1, col2 = st.columns(2)
 
 with col1:
@@ -112,26 +116,26 @@ with col2:
     else:
         st.warning("No breed data available.")
 
-# ------------------- New Pets Registered Over Time -------------------
+# New pets registered over time
 if "createdAt" in pets_df.columns and not pets_df.empty:
     pets_df["createdAt"] = pd.to_datetime(pets_df["createdAt"])
-    active_users_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
-    active_users_over_time = active_users_over_time.rename(columns={"_id": "new_pets_registered"})
+    pets_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
+    pets_over_time = pets_over_time.rename(columns={"_id": "new_pets_registered"})
 
     st.subheader("New Pets Registered Over Time")
-    fig_time = px.line(active_users_over_time, x="createdAt", y="new_pets_registered", title="New Pets Registered Over Time")
+    fig_time = px.line(pets_over_time, x="createdAt", y="new_pets_registered", title="New Pets Registered Over Time")
     st.plotly_chart(fig_time, use_container_width=True)
 else:
     st.warning("No registration date data available.")
 
-# ------------------- Map Visualization -------------------
+# Map visualization
 if not map_df.empty:
     st.subheader("User Locations on Map")
     st.map(map_df)
 else:
     st.warning("No valid location data available.")
 
-# ------------------- Swipe Insights with Date Filters -------------------
+# Swipe insights with date filters
 st.header("📅 Swipe Insights (Date-wise filter)")
 
 start_date = st.date_input("Start Date", value=datetime(2024, 1, 1))
@@ -162,11 +166,10 @@ fig_swipes = go.Figure(data=[go.Bar(
 fig_swipes.update_layout(title=f"Swipes from {start_date} to {end_date}")
 st.plotly_chart(fig_swipes, use_container_width=True)
 
-# ------------------- Users vs Number of Pets Chart -------------------
+# Users vs pets distribution (bug fixed)
 if not pets_df.empty:
     user_pet_count = pets_df["userId"].value_counts()
-    pet_counts_distribution = user_pet_count.value_counts().reindex([0,1,2,3], fill_value=0).reset_index()
-    pet_counts_distribution.columns = ["Number of Pets", "User Count"]
+    pet_counts_distribution = user_pet_count.value_counts().reindex([0, 1, 2, 3], fill_value=0).rename_axis("Number of Pets").reset_index(name="User Count")
 
     st.subheader("User Counts Based on Number of Pets (0,1,2,3)")
     fig_pet_distribution = px.bar(

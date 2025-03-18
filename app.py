@@ -26,9 +26,14 @@ st.markdown("""
 def login():
     st.markdown("""
         <style>
-        .stTextInput>div>div>input {
-            width: 250px;
-            margin: 0 auto;
+        .login-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .login-container input {
+            width: 250px !important;
+            margin: 5px auto !important;
         }
         h1 {
             text-align: center;
@@ -36,16 +41,18 @@ def login():
         </style>
     """, unsafe_allow_html=True)
 
-    st.title("🐾 Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if username == "admin" and password == "password123":
-            st.session_state.logged_in = True
-            st.rerun()
-        else:
-            st.error("Invalid credentials. Please try again.")
+    with st.container():
+        st.markdown('<div class="login-container">', unsafe_allow_html=True)
+        st.title("🐾 Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if username == "admin" and password == "password123":
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("Invalid credentials. Please try again.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -53,6 +60,7 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     login()
     st.stop()
+
 
 # ------------------- MongoDB Connection -------------------
 uri = "mongodb+srv://readOnlyUser:DoffairReadDev@development-cluster.9w53x.mongodb.net/doffair_dev?retryWrites=true&w=majority"

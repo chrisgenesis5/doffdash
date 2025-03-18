@@ -26,14 +26,10 @@ st.markdown("""
 def login():
     st.markdown("""
         <style>
-        .login-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .login-container input {
-            width: 250px !important;
-            margin: 5px auto !important;
+        .stTextInput>div>div>input {
+            width: 250px;
+            margin: 0 auto;
+            display: block;
         }
         h1 {
             text-align: center;
@@ -41,18 +37,16 @@ def login():
         </style>
     """, unsafe_allow_html=True)
 
-    with st.container():
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        st.title("🐾 Login")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.button("Login"):
-            if username == "admin" and password == "password123":
-                st.session_state.logged_in = True
-                st.rerun()
-            else:
-                st.error("Invalid credentials. Please try again.")
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.title("🐾 Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if username == "admin" and password == "password123":
+            st.session_state.logged_in = True
+            st.rerun()
+        else:
+            st.error("Invalid credentials. Please try again.")
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -61,13 +55,11 @@ if not st.session_state.logged_in:
     login()
     st.stop()
 
-
 # ------------------- MongoDB Connection -------------------
 uri = "mongodb+srv://readOnlyUser:DoffairReadDev@development-cluster.9w53x.mongodb.net/doffair_dev?retryWrites=true&w=majority"
 client = MongoClient(uri)
 db = client["doffair_dev"]
 
-# Helper function to handle DBRef fields
 def remove_dbref(doc):
     return {k: v if not isinstance(v, DBRef) else str(v) for k, v in doc.items()}
 
@@ -76,7 +68,6 @@ users_df = pd.DataFrame([remove_dbref(doc) for doc in db["users"].find({}, {"_id
 pets_df = pd.DataFrame([remove_dbref(doc) for doc in db["pets"].find({}, {"_id": 1, "userId": 1, "breed": 1, "createdAt": 1, "likeList": 1, "unlikedList": 1, "superLike": 1})])
 user_info_df = pd.DataFrame([remove_dbref(doc) for doc in db["userInfo"].find({}, {"_id": 1, "userId": 1, "location": 1})])
 
-# Extract coordinates for map
 if "location" in user_info_df.columns and not user_info_df.empty:
     def extract_coordinates(loc):
         if isinstance(loc, dict) and "coordinates" in loc:
@@ -93,25 +84,24 @@ else:
     map_df = pd.DataFrame(columns=["longitude", "latitude"])
 
 # ------------------- Basic Metrics -------------------
-total_users = users_df['_id'].nunique()  # ✅ Unique users
+total_users = users_df["_id"].nunique()   # ✅ Unique user count
 total_pets = len(pets_df)
 
-# Breed distribution
 breed_distribution = pets_df["breed"].value_counts().reset_index() if "breed" in pets_df.columns and not pets_df.empty else pd.DataFrame(columns=["breed", "count"])
 breed_distribution.columns = ["breed", "count"]
 
 # ------------------- Streamlit Layout -------------------
 st.title("🐾 Doffair Analytics Dashboard")
 
-# ----------- Users & Pets + Pie Chart ----------------
-col1, col2 = st.columns(2)
+# ---------- First Row: Users & Pets + Pie Chart ----------
+col1, col2 = st.columns([1.2, 1])
 
 with col1:
     counts_df = pd.DataFrame({
-        "Category": ["Total Unique Users", "Total Pets"],
+        "Category": ["Unique Users", "Total Pets"],
         "Count": [total_users, total_pets]
     })
-    st.subheader("Total Unique Users and Pets Count")
+    st.subheader("Unique Users and Pet Count")
     fig_count = go.Figure(data=[go.Bar(
         x=counts_df["Category"],
         y=counts_df["Count"],
@@ -119,19 +109,24 @@ with col1:
         textposition='auto',
         marker_color=['#636EFA', '#EF553B']
     )])
-    fig_count.update_layout(title="Unique Users and Total Pets")
+    fig_count.update_layout(title="Unique Users and Pets")
     st.plotly_chart(fig_count, use_container_width=True)
 
 with col2:
     if not breed_distribution.empty:
         st.subheader("Pet Distribution by Breed")
-        fig_breed = px.pie(breed_distribution, names="breed", values="count", title="Pet Distribution by Breed")
-        fig_breed.update_traces(textinfo='label+value')  # ✅ Only labels + count, no percent clutter
+        fig_breed = px.pie(
+            breed_distribution,
+            names="breed",
+            values="count",
+            title="Pet Distribution by Breed"
+        )
+        fig_breed.update_traces(textinfo='percent+label')  # ✅ Only percentage and label
         st.plotly_chart(fig_breed, use_container_width=True)
     else:
         st.warning("No breed data available.")
 
-# ----------- Pets Registered Over Time ----------------
+# ------------------- New Pets Registered Over Time -------------------
 if "createdAt" in pets_df.columns and not pets_df.empty:
     pets_df["createdAt"] = pd.to_datetime(pets_df["createdAt"])
     pets_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
@@ -150,10 +145,11 @@ if not map_df.empty:
 else:
     st.warning("No valid location data available.")
 
-# ------------------- Swipe Insights (date filter on left only) -------------------
+# ------------------- Swipe Insights with Date Filters -------------------
 st.header("📅 Swipe Insights (Date-wise filter)")
-col_filter, _ = st.columns([1, 4])
-with col_filter:
+
+date_col1, date_col2 = st.columns([0.3, 0.7])  # ✅ Small left-aligned filter
+with date_col1:
     start_date = st.date_input("Start Date", value=datetime(2024, 1, 1))
     end_date = st.date_input("End Date", value=datetime.today())
 
@@ -185,9 +181,11 @@ st.plotly_chart(fig_swipes, use_container_width=True)
 # ------------------- Users vs Number of Pets Chart -------------------
 if not pets_df.empty:
     user_pet_count = pets_df["userId"].value_counts()
-    pet_counts_distribution = user_pet_count.value_counts().reindex(range(0, 4), fill_value=0)
-    pet_counts_distribution = pet_counts_distribution.reset_index()
-    pet_counts_distribution.columns = ["Number of Pets", "User Count"]
+    user_pet_count = user_pet_count.value_counts().reindex(range(0, 4), fill_value=0)
+    pet_counts_distribution = pd.DataFrame({
+        "Number of Pets": user_pet_count.index,
+        "User Count": user_pet_count.values
+    })
 
     st.subheader("User Counts Based on Number of Pets (0,1,2,3)")
     fig_pet_distribution = px.bar(
@@ -200,5 +198,5 @@ if not pets_df.empty:
         color_continuous_scale="Blues"
     )
     fig_pet_distribution.update_traces(textposition='outside')
-    fig_pet_distribution.update_xaxes(dtick=1)  # ✅ no decimals
+    fig_pet_distribution.update_xaxes(dtick=1)  # ✅ Whole numbers only
     st.plotly_chart(fig_pet_distribution, use_container_width=True)

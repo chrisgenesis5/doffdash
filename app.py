@@ -15,7 +15,8 @@ def login():
     if st.button("Login"):
         if username == "admin" and password == "password123":
             st.session_state.logged_in = True
-            st.experimental_rerun()
+            st.rerun()
+
         else:
             st.error("Invalid credentials. Please try again.")
 

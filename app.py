@@ -31,7 +31,7 @@ uri = "mongodb+srv://readOnlyUser:DoffairReadDev@development-cluster.9w53x.mongo
 client = MongoClient(uri)
 db = client["doffair_dev"]
 
-# Helper function to handle DBRef fields
+# Helper function for DBRef
 def remove_dbref(doc):
     return {k: v if not isinstance(v, DBRef) else str(v) for k, v in doc.items()}
 
@@ -67,12 +67,11 @@ breed_distribution.columns = ["breed", "count"]
 # ------------------- Streamlit Layout -------------------
 st.title("🐾 Doffair Analytics Dashboard")
 
-# Show total users and pets in bar chart with labels
+# Chart 1: Total Users and Pets
 counts_df = pd.DataFrame({
     "Category": ["Total Users", "Total Pets"],
     "Count": [total_users, total_pets]
 })
-st.subheader("Total Number of Pets and User Count")
 fig_count = go.Figure(data=[go.Bar(
     x=counts_df["Category"],
     y=counts_df["Count"],
@@ -81,38 +80,47 @@ fig_count = go.Figure(data=[go.Bar(
     marker_color=['#636EFA', '#EF553B']
 )])
 fig_count.update_layout(title="Total Number of Pets and User Count")
-st.plotly_chart(fig_count)
 
-# ------------------- Pet Breed Pie Chart -------------------
+# Chart 2: Pet Breed Pie Chart
 if not breed_distribution.empty:
-    st.subheader("Pet Distribution by Breed")
     fig_breed = px.pie(breed_distribution, names="breed", values="count", title="Pet Distribution by Breed")
-    st.plotly_chart(fig_breed)
 else:
-    st.warning("No breed data available.")
+    fig_breed = None
 
-# ------------------- New Pets Registered Over Time -------------------
+# Top Row: side-by-side
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("Total Number of Pets and User Count")
+    st.plotly_chart(fig_count, use_container_width=True)
+
+with col2:
+    if fig_breed is not None:
+        st.subheader("Pet Distribution by Breed")
+        st.plotly_chart(fig_breed, use_container_width=True)
+    else:
+        st.warning("No breed data available.")
+
+# Chart 3: New Pets Registered Over Time
 if "createdAt" in pets_df.columns and not pets_df.empty:
     pets_df["createdAt"] = pd.to_datetime(pets_df["createdAt"])
     active_users_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
     active_users_over_time = active_users_over_time.rename(columns={"_id": "new_pets_registered"})
 
-    st.subheader("New Pets Registered Over Time")
     fig_time = px.line(active_users_over_time, x="createdAt", y="new_pets_registered", title="New Pets Registered Over Time")
-    st.plotly_chart(fig_time)
+    st.subheader("New Pets Registered Over Time")
+    st.plotly_chart(fig_time, use_container_width=True)
 else:
     st.warning("No registration date data available.")
 
-# ------------------- User Locations on Map -------------------
+# Chart 4: Map Visualization
 if not map_df.empty:
     st.subheader("User Locations on Map")
     st.map(map_df)
 else:
     st.warning("No valid location data available.")
 
-# ------------------- Swipe Insights with Date Filters -------------------
+# Chart 5: Swipe Insights with Date Filters
 st.header("📅 Swipe Insights (Date-wise filter)")
-
 start_date = st.date_input("Start Date", value=datetime(2024, 1, 1))
 end_date = st.date_input("End Date", value=datetime.today())
 
@@ -132,7 +140,6 @@ swipe_data = pd.DataFrame({
     "Count": [total_swipe_right, total_swipe_left, total_super_likes]
 })
 
-st.subheader("Swipe Counts (filtered by date)")
 fig_swipes = go.Figure(data=[go.Bar(
     x=swipe_data["Action"],
     y=swipe_data["Count"],
@@ -141,33 +148,31 @@ fig_swipes = go.Figure(data=[go.Bar(
     marker_color=['#00CC96', '#EF553B', '#AB63FA']
 )])
 fig_swipes.update_layout(title=f"Swipes from {start_date} to {end_date}")
-st.plotly_chart(fig_swipes)
 
-# ------------------- New Chart: Users by Number of Pets -------------------
-st.subheader("User Distribution by Number of Pets (0, 1, 2, 3)")
+# Chart 6: Users distribution by pet count
+pets_per_user = pets_df.groupby("userId").size().reset_index(name="pet_count")
+users_with_pet_counts = pets_per_user["pet_count"].value_counts().reindex([0, 1, 2, 3], fill_value=0).reset_index()
+users_with_pet_counts.columns = ["Number of Pets", "User Count"]
 
-pets_per_user = pets_df["userId"].value_counts().reset_index()
-pets_per_user.columns = ["userId", "pet_count"]
+# Also count users with zero pets:
+users_with_zero_pets = total_users - pets_per_user["userId"].nunique()
+users_with_pet_counts.loc[users_with_pet_counts["Number of Pets"] == 0, "User Count"] = users_with_zero_pets
 
-# Count users by number of pets (0-3)
-distribution_counts = {
-    0: total_users - len(pets_per_user),
-    1: pets_per_user[pets_per_user["pet_count"] == 1].shape[0],
-    2: pets_per_user[pets_per_user["pet_count"] == 2].shape[0],
-    3: pets_per_user[pets_per_user["pet_count"] == 3].shape[0]
-}
-
-distribution_df = pd.DataFrame({
-    "Number of Pets": list(distribution_counts.keys()),
-    "User Count": list(distribution_counts.values())
-})
-
-fig_users_pets = go.Figure(data=[go.Bar(
-    x=distribution_df["Number of Pets"].astype(str),
-    y=distribution_df["User Count"],
-    text=distribution_df["User Count"],
+fig_user_pets = go.Figure(data=[go.Bar(
+    x=users_with_pet_counts["Number of Pets"].astype(str),
+    y=users_with_pet_counts["User Count"],
+    text=users_with_pet_counts["User Count"],
     textposition='auto',
-    marker_color=['#FFA15A', '#19D3F3', '#AB63FA', '#00CC96']
+    marker_color='#FFA15A'
 )])
-fig_users_pets.update_layout(title="Users by Number of Pets")
-st.plotly_chart(fig_users_pets)
+fig_user_pets.update_layout(title="Users Distribution by Number of Pets")
+
+# Bottom row side-by-side
+col3, col4 = st.columns(2)
+with col3:
+    st.subheader("Swipe Counts (filtered by date)")
+    st.plotly_chart(fig_swipes, use_container_width=True)
+
+with col4:
+    st.subheader("Users Distribution by Number of Pets")
+    st.plotly_chart(fig_user_pets, use_container_width=True)

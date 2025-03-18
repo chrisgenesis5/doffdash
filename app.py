@@ -166,7 +166,7 @@ st.plotly_chart(fig_swipes, use_container_width=True)
 # ------------------- Users vs Number of Pets -------------------
 if not pets_df.empty:
     user_pet_count = pets_df["userId"].value_counts()
-    pet_counts_distribution = user_pet_count.value_counts().reset_index()
+    pet_counts_distribution = user_pet_count.value_counts().rename_axis('Number of Pets').reset_index(name='User Count')
     pet_counts_distribution.columns = ["Number of Pets", "User Count"]
     pet_counts_distribution = pet_counts_distribution.sort_values("Number of Pets")
 

@@ -16,7 +16,6 @@ def login():
         if username == "admin" and password == "password123":
             st.session_state.logged_in = True
             st.rerun()
-
         else:
             st.error("Invalid credentials. Please try again.")
 
@@ -92,7 +91,7 @@ if not breed_distribution.empty:
 else:
     st.warning("No breed data available.")
 
-# ------------------- Active Users Over Time (Pet Registrations) -------------------
+# ------------------- New Pets Registered Over Time -------------------
 if "createdAt" in pets_df.columns and not pets_df.empty:
     pets_df["createdAt"] = pd.to_datetime(pets_df["createdAt"])
     active_users_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
@@ -104,7 +103,7 @@ if "createdAt" in pets_df.columns and not pets_df.empty:
 else:
     st.warning("No registration date data available.")
 
-# ------------------- Map Visualization -------------------
+# ------------------- User Locations on Map -------------------
 if not map_df.empty:
     st.subheader("User Locations on Map")
     st.map(map_df)
@@ -143,3 +142,32 @@ fig_swipes = go.Figure(data=[go.Bar(
 )])
 fig_swipes.update_layout(title=f"Swipes from {start_date} to {end_date}")
 st.plotly_chart(fig_swipes)
+
+# ------------------- New Chart: Users by Number of Pets -------------------
+st.subheader("User Distribution by Number of Pets (0, 1, 2, 3)")
+
+pets_per_user = pets_df["userId"].value_counts().reset_index()
+pets_per_user.columns = ["userId", "pet_count"]
+
+# Count users by number of pets (0-3)
+distribution_counts = {
+    0: total_users - len(pets_per_user),
+    1: pets_per_user[pets_per_user["pet_count"] == 1].shape[0],
+    2: pets_per_user[pets_per_user["pet_count"] == 2].shape[0],
+    3: pets_per_user[pets_per_user["pet_count"] == 3].shape[0]
+}
+
+distribution_df = pd.DataFrame({
+    "Number of Pets": list(distribution_counts.keys()),
+    "User Count": list(distribution_counts.values())
+})
+
+fig_users_pets = go.Figure(data=[go.Bar(
+    x=distribution_df["Number of Pets"].astype(str),
+    y=distribution_df["User Count"],
+    text=distribution_df["User Count"],
+    textposition='auto',
+    marker_color=['#FFA15A', '#19D3F3', '#AB63FA', '#00CC96']
+)])
+fig_users_pets.update_layout(title="Users by Number of Pets")
+st.plotly_chart(fig_users_pets)

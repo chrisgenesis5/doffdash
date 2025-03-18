@@ -6,37 +6,17 @@ import plotly.graph_objects as go
 from datetime import datetime
 from bson import DBRef
 
-# ------------------- Streamlit Page Config -------------------
+# ------------------- Streamlit Config -------------------
 st.set_page_config(page_title="Doffair Analytics Dashboard", layout="wide")
 st.markdown("""
     <style>
-    .block-container {
-        padding: 0rem 1rem 0rem 1rem !important;
-        max-width: 100% !important;
-    }
-    .main {
-        padding-left: 0rem !important;
-        padding-right: 0rem !important;
-    }
+    .block-container {padding: 0rem 1rem !important; max-width: 100% !important;}
     header, footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
-# ------------------- Login Page -------------------
+# ------------------- Login -------------------
 def login():
-    st.markdown("""
-        <style>
-        .stTextInput>div>div>input {
-            width: 250px;
-            margin: 0 auto;
-            display: block;
-        }
-        h1 {
-            text-align: center;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
     st.title("🐾 Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
@@ -60,14 +40,28 @@ uri = "mongodb+srv://readOnlyUser:DoffairReadDev@development-cluster.9w53x.mongo
 client = MongoClient(uri)
 db = client["doffair_dev"]
 
+# Helper function for DBRef
 def remove_dbref(doc):
     return {k: v if not isinstance(v, DBRef) else str(v) for k, v in doc.items()}
 
 # ------------------- Fetch Data -------------------
-users_df = pd.DataFrame([remove_dbref(doc) for doc in db["users"].find({}, {"_id": 1})])
+users_df = pd.DataFrame([remove_dbref(doc) for doc in db["users"].find({}, {"_id": 1, "phoneNumber": 1})])
 pets_df = pd.DataFrame([remove_dbref(doc) for doc in db["pets"].find({}, {"_id": 1, "userId": 1, "breed": 1, "createdAt": 1, "likeList": 1, "unlikedList": 1, "superLike": 1})])
 user_info_df = pd.DataFrame([remove_dbref(doc) for doc in db["userInfo"].find({}, {"_id": 1, "userId": 1, "location": 1})])
 
+# Unique user count based on phone number if available, else fallback to _id
+if "phoneNumber" in users_df.columns and not users_df.empty:
+    unique_users = users_df["phoneNumber"].nunique()
+else:
+    unique_users = users_df["_id"].nunique()
+
+total_pets = pets_df["_id"].nunique()
+
+# Breed distribution
+breed_distribution = pets_df["breed"].value_counts().reset_index()
+breed_distribution.columns = ["breed", "count"]
+
+# ------------------- Location Data -------------------
 if "location" in user_info_df.columns and not user_info_df.empty:
     def extract_coordinates(loc):
         if isinstance(loc, dict) and "coordinates" in loc:
@@ -83,25 +77,18 @@ if "location" in user_info_df.columns and not user_info_df.empty:
 else:
     map_df = pd.DataFrame(columns=["longitude", "latitude"])
 
-# ------------------- Basic Metrics -------------------
-total_users = users_df["_id"].nunique()   # ✅ Unique user count
-total_pets = len(pets_df)
-
-breed_distribution = pets_df["breed"].value_counts().reset_index() if "breed" in pets_df.columns and not pets_df.empty else pd.DataFrame(columns=["breed", "count"])
-breed_distribution.columns = ["breed", "count"]
-
-# ------------------- Streamlit Layout -------------------
+# ------------------- Layout Start -------------------
 st.title("🐾 Doffair Analytics Dashboard")
 
-# ---------- First Row: Users & Pets + Pie Chart ----------
-col1, col2 = st.columns([1.2, 1])
+# ------------------- Metrics and Pie Chart -------------------
+col1, col2 = st.columns(2)
 
 with col1:
     counts_df = pd.DataFrame({
         "Category": ["Unique Users", "Total Pets"],
-        "Count": [total_users, total_pets]
+        "Count": [unique_users, total_pets]
     })
-    st.subheader("Unique Users and Pet Count")
+    st.subheader("Unique Users and Total Pets")
     fig_count = go.Figure(data=[go.Bar(
         x=counts_df["Category"],
         y=counts_df["Count"],
@@ -109,7 +96,7 @@ with col1:
         textposition='auto',
         marker_color=['#636EFA', '#EF553B']
     )])
-    fig_count.update_layout(title="Unique Users and Pets")
+    fig_count.update_layout(title="Unique Users and Total Pets")
     st.plotly_chart(fig_count, use_container_width=True)
 
 with col2:
@@ -119,14 +106,15 @@ with col2:
             breed_distribution,
             names="breed",
             values="count",
-            title="Pet Distribution by Breed"
+            title="Pet Distribution by Breed",
+            hole=0.4
         )
-        fig_breed.update_traces(textinfo='percent+label')  # ✅ Only percentage and label
+        fig_breed.update_traces(textinfo='percent+label')
         st.plotly_chart(fig_breed, use_container_width=True)
     else:
         st.warning("No breed data available.")
 
-# ------------------- New Pets Registered Over Time -------------------
+# ------------------- Pets Registered Over Time -------------------
 if "createdAt" in pets_df.columns and not pets_df.empty:
     pets_df["createdAt"] = pd.to_datetime(pets_df["createdAt"])
     pets_over_time = pets_df.resample("M", on="createdAt").count().reset_index()
@@ -135,21 +123,18 @@ if "createdAt" in pets_df.columns and not pets_df.empty:
     st.subheader("New Pets Registered Over Time")
     fig_time = px.line(pets_over_time, x="createdAt", y="new_pets_registered", title="New Pets Registered Over Time")
     st.plotly_chart(fig_time, use_container_width=True)
-else:
-    st.warning("No registration date data available.")
 
-# ------------------- Map Visualization -------------------
+# ------------------- Map -------------------
 if not map_df.empty:
     st.subheader("User Locations on Map")
     st.map(map_df)
 else:
     st.warning("No valid location data available.")
 
-# ------------------- Swipe Insights with Date Filters -------------------
+# ------------------- Swipe Insights -------------------
 st.header("📅 Swipe Insights (Date-wise filter)")
-
-date_col1, date_col2 = st.columns([0.3, 0.7])  # ✅ Small left-aligned filter
-with date_col1:
+with st.sidebar:
+    st.subheader("Filter by Date")
     start_date = st.date_input("Start Date", value=datetime(2024, 1, 1))
     end_date = st.date_input("End Date", value=datetime.today())
 
@@ -167,7 +152,7 @@ swipe_data = pd.DataFrame({
     "Count": [total_swipe_right, total_swipe_left, total_super_likes]
 })
 
-st.subheader("Swipe Counts (filtered by date)")
+st.subheader("Swipe Counts")
 fig_swipes = go.Figure(data=[go.Bar(
     x=swipe_data["Action"],
     y=swipe_data["Count"],
@@ -178,25 +163,23 @@ fig_swipes = go.Figure(data=[go.Bar(
 fig_swipes.update_layout(title=f"Swipes from {start_date} to {end_date}")
 st.plotly_chart(fig_swipes, use_container_width=True)
 
-# ------------------- Users vs Number of Pets Chart -------------------
+# ------------------- Users vs Number of Pets -------------------
 if not pets_df.empty:
     user_pet_count = pets_df["userId"].value_counts()
-    user_pet_count = user_pet_count.value_counts().reindex(range(0, 4), fill_value=0)
-    pet_counts_distribution = pd.DataFrame({
-        "Number of Pets": user_pet_count.index,
-        "User Count": user_pet_count.values
-    })
+    pet_counts_distribution = user_pet_count.value_counts().reset_index()
+    pet_counts_distribution.columns = ["Number of Pets", "User Count"]
+    pet_counts_distribution = pet_counts_distribution.sort_values("Number of Pets")
 
-    st.subheader("User Counts Based on Number of Pets (0,1,2,3)")
+    st.subheader("User Counts by Number of Pets")
     fig_pet_distribution = px.bar(
         pet_counts_distribution,
         x="Number of Pets",
         y="User Count",
         text="User Count",
-        title="Users by Number of Pets",
+        title="Users by Number of Pets (0,1,2,3..)",
         color="User Count",
         color_continuous_scale="Blues"
     )
     fig_pet_distribution.update_traces(textposition='outside')
-    fig_pet_distribution.update_xaxes(dtick=1)  # ✅ Whole numbers only
+    fig_pet_distribution.update_layout(xaxis=dict(tickmode='linear'))
     st.plotly_chart(fig_pet_distribution, use_container_width=True)

@@ -80,7 +80,7 @@ else:
 # ------------------- Layout Start -------------------
 st.title("🐾 Doffair Analytics Dashboard")
 
-# ------------------- Metrics and Pie Chart -------------------
+# ------------------- Metrics and Count Chart -------------------
 col1, col2 = st.columns(2)
 
 with col1:
@@ -99,20 +99,25 @@ with col1:
     fig_count.update_layout(title="Unique Users and Total Pets")
     st.plotly_chart(fig_count, use_container_width=True)
 
-with col2:
-    if not breed_distribution.empty:
-        st.subheader("Pet Distribution by Breed")
-        fig_breed = px.pie(
-            breed_distribution,
-            names="breed",
-            values="count",
-            title="Pet Distribution by Breed",
-            hole=0.4
-        )
-        fig_breed.update_traces(textinfo='percent+label')
-        st.plotly_chart(fig_breed, use_container_width=True)
-    else:
-        st.warning("No breed data available.")
+# ------------------- Colorful Horizontal Chart for Breeds -------------------
+if not breed_distribution.empty:
+    st.subheader("Pet Distribution by Breed (Horizontal Bar)")
+
+    fig_breed = px.bar(
+        breed_distribution.sort_values("count", ascending=True),
+        x="count",
+        y="breed",
+        orientation="h",
+        title="Pet Distribution by Breed",
+        text="count",
+        color="breed",  # This line makes each breed a different color
+        color_discrete_sequence=px.colors.qualitative.Plotly  # Vibrant color palette
+    )
+    fig_breed.update_traces(textposition='outside')
+    st.plotly_chart(fig_breed, use_container_width=True)
+else:
+    st.warning("No breed data available.")
+
 
 # ------------------- Pets Registered Over Time -------------------
 if "createdAt" in pets_df.columns and not pets_df.empty:
@@ -166,7 +171,6 @@ st.plotly_chart(fig_swipes, use_container_width=True)
 # ------------------- Users vs Number of Pets -------------------
 if not pets_df.empty:
     user_pet_count = pets_df["userId"].value_counts()
-    # Create a full range from 0 to max pets
     all_counts = pd.Series(0, index=range(0, user_pet_count.max() + 1))
     for count in user_pet_count.value_counts().index:
         user_count = user_pet_count.value_counts()[count]
@@ -182,12 +186,10 @@ if not pets_df.empty:
         x="Number of Pets",
         y="User Count",
         text="User Count",
-        title="Users by Number of Pets (0,1,2,3..)",
+        title="Users by Number of Pets (0,1,2,3...)",
         color="User Count",
         color_continuous_scale="Blues"
     )
     fig_pet_distribution.update_traces(textposition='outside')
     fig_pet_distribution.update_layout(xaxis=dict(tickmode='linear'))
-    st.plotly_chart(fig_pet_distribution, use_container_width=True)
-
-
+    st.plotly_chart(fig_pet_distribution, use_container_width=True) 
